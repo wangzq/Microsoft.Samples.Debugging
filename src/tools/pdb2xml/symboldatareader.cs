@@ -8,6 +8,7 @@ using System.Diagnostics.SymbolStore;
 using Microsoft.Samples.Debugging.CorSymbolStore;
 using System.Text;
 using System.IO;
+using System.Linq;
 
 namespace Pdb2Xml
 {
@@ -24,11 +25,13 @@ namespace Pdb2Xml
         public SymbolDataReader(string assemblyPath, SymbolFormat symFormat, bool expandAttributes)
         {
             m_assemblyPath = assemblyPath;
+	        m_assemblyDir = Path.GetDirectoryName(assemblyPath);
             m_symFormat = symFormat;
             m_expandAttributes = expandAttributes;
         }
 
         string m_assemblyPath;
+	    private string m_assemblyDir;
 
         SymbolFormat m_symFormat;
 
@@ -79,6 +82,13 @@ namespace Pdb2Xml
             // args.Name is the assembly name, not the filename.
             // Naive implementation that just assumes the assembly is in the working directory.
             // This does not have any knowledge about the initial assembly we were trying to load.
+	        var asmName = new AssemblyName(args.Name);
+	        var file = Path.Combine(m_assemblyDir, asmName.Name + ".dll");
+	        if (File.Exists(file))
+	        {
+		        return Assembly.ReflectionOnlyLoadFrom(file);
+	        }
+
             Assembly a = System.Reflection.Assembly.ReflectionOnlyLoad(args.Name);
 
             return a;
@@ -170,7 +180,7 @@ namespace Pdb2Xml
                 }
 
                 // Now loop through each type.  Note that this includes nested types.
-                foreach(Type type in mod.GetTypes())
+                foreach(Type type in ModuleSafeGetTypes(mod))
                 {
                     // Return each constructor
                     foreach (ConstructorInfo con in type.GetConstructors(allDeclared))
@@ -199,13 +209,35 @@ namespace Pdb2Xml
                 foreach (int tok in tokenSeenSet.Keys)
                 {
                     Debug.Assert(tok > lastTok, "token list is supposed to be sorted");
-                    Debug.Assert(tok == lastTok + 1, "missed some method tokens",
-                        String.Format("Missed 0x{0:x} to 0x{0:x}", lastTok + 1, tok));
+                    // Debug.Assert(tok == lastTok + 1, "missed some method tokens", String.Format("Missed 0x{0:x} to 0x{1:x}", lastTok + 1, tok));
+	                if (tok != lastTok + 1)
+	                {
+		                Console.Error.WriteLine("Missed some method tokens: 0x{0:x} to 0x{1:x}", lastTok + 1, tok);
+	                }
                     lastTok = tok;
                 }
                 tokenSeenSet.Clear();
             }
         }
+
+	    static Type[] ModuleSafeGetTypes(Module mod)
+	    {
+		    try
+		    {
+			    return mod.GetTypes();
+		    }
+		    catch (ReflectionTypeLoadException ex)
+		    {
+			    if (ex.LoaderExceptions != null)
+			    {
+				    foreach (var loaderEx in ex.LoaderExceptions)
+				    {
+					    Console.Error.WriteLine(loaderEx.Message);
+				    }
+			    }
+			    return ex.Types.Where(t => t != null).ToArray();
+		    }
+	    }
 
         // Write the sequence points for the given method
         // Sequence points are the map between IL offsets and source lines.
