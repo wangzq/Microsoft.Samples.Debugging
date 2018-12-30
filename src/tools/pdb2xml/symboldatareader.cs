@@ -102,6 +102,7 @@ namespace Pdb2Xml
             // Use reflection to enumerate all methods            
             foreach (MethodBase methodReflection in GetAllMethods(m_assembly))
             {
+	            if (methodReflection.DeclaringType == null) continue;
                 int token = methodReflection.MetadataToken;
                 ISymbolMethod methodSymbol = reader.GetMethod(new SymbolToken(token));
                 if (methodSymbol != null)
@@ -111,21 +112,26 @@ namespace Pdb2Xml
                     methodData.name = methodReflection.DeclaringType.FullName + "::" + methodReflection.Name;
                     
                     // This localSigMetadataToken information actually comes from the metadata in the assembly because the symbol reading API does not provide it.
-                    try
-                    {
-                        MethodBody body = methodReflection.GetMethodBody();
-                        int lSMT = body.LocalSignatureMetadataToken;
-                        if (lSMT != 0)
-                        {
-                            methodData.localSigMetadataToken = Util.AsToken(lSMT);
-                        }
-                    }
-                    catch (System.Security.VerificationException)
-                    {
-                        // Work around a CLR or C# compiler bug with Void& types in signatures
-                        // <strip>See DevDiv Bugs 146662</strip>
-                        methodData.hasInvalidMethodBody = true;
-                    }
+	                try
+	                {
+		                MethodBody body = methodReflection.GetMethodBody();
+		                int lSMT = body.LocalSignatureMetadataToken;
+		                if (lSMT != 0)
+		                {
+			                methodData.localSigMetadataToken = Util.AsToken(lSMT);
+		                }
+	                }
+	                catch (System.Security.VerificationException)
+	                {
+		                // Work around a CLR or C# compiler bug with Void& types in signatures
+		                // <strip>See DevDiv Bugs 146662</strip>
+		                methodData.hasInvalidMethodBody = true;
+	                }
+	                catch (Exception ex)
+	                {
+		                Console.Error.WriteLine($"Unable to GetMethodBody {methodReflection.Name}: {ex.Message}");
+		                methodData.hasInvalidMethodBody = true;
+	                }
 
                     methodData.sequencePoints = ReadSequencePoints(methodSymbol);
                     methodData.rootScope = ReadScope(methodSymbol.RootScope);
@@ -374,7 +380,7 @@ namespace Pdb2Xml
             {
                 Constant constData = new Constant();
                 constData.name = c.GetName();
-                constData.value = c.GetValue().ToString();
+                constData.value = c.GetValue()?.ToString();
                 constData.signature = Util.ToHexString(c.GetSignature());
                 constants.Add(constData);
             }

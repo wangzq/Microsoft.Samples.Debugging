@@ -18,7 +18,7 @@ namespace Pdb2Xml
     {
         public static int Main(string[] args)
         {
-            Console.WriteLine("Test harness for PDB2XML.");
+            // Console.WriteLine("Test harness for PDB2XML.");
             if (args.Length < 2)
             {
                 Usage();
